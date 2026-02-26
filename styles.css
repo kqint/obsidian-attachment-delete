@@ -1,0 +1,38 @@
+/* 路径列表容器 */
+.sd-list-container {
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 20px;
+    font-family: var(--font-monospace);
+    font-size: 0.9em;
+}
+
+/* 按钮行布局 */
+.sd-btn-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* 始终淡红色背景 - 强制覆盖 Obsidian 默认按钮颜色 */
+.sd-btn-danger {
+    background-color: #e57373 !important;   /* 柔和红 */
+    color: white !important;
+    border: none !important;
+}
+
+/* Hover 稍微加深 */
+.sd-btn-danger:hover {
+    background-color: #d65c5c !important;
+}
+
+/* 警告图标样式 - 确保颜色固定 */
+.sd-warning-icon {
+    color: #f5c542; /* 原生警告黄 */
+    margin-right: 8px;
+    font-weight: bold;
+}

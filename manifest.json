@@ -1,0 +1,11 @@
+{
+	"id": "attachment-delete",
+	"name": "Attachment Delete",
+	"version": "1.1.0",
+	"minAppVersion": "0.15.0",
+	"description": "Right-click context menu to intelligently delete attachments. Checks for references and supports cascading empty folder deletion.",
+	"author": "kqint",
+	"authorUrl": "https://github.com/kqint/",
+	"isDesktopOnly": false,
+    "css": "styles.css"
+}
