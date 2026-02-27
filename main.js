@@ -26,6 +26,7 @@ module.exports = class SmartDeletePlugin extends Plugin {
                         item
                             .setTitle("删除附件 ")
                             .setIcon("trash")
+                            .setWarning(true)
                             .onClick(async () => {
                                 await this.processDeleteRequest(editor, linkInfo, view.file);
                             });

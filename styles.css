@@ -30,9 +30,9 @@
     background-color: #d65c5c !important;
 }
 
-/* 警告图标样式 - 确保颜色固定 */
+/* 警告图标样式 */
 .sd-warning-icon {
-    color: #f5c542; /* 原生警告黄 */
+    color: #f5c542;
     margin-right: 8px;
     font-weight: bold;
 }
