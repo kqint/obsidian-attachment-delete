@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS = {
 
 module.exports = class SmartDeletePlugin extends Plugin {
     async onload() {
+        this.isProcessing = false; // 初始化状态锁
+
         await this.loadSettings();
         this.addSettingTab(new SmartDeleteSettingTab(this.app, this));
         this.registerEvent(
@@ -41,10 +43,10 @@ module.exports = class SmartDeletePlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
-    /**
-     * 处理删除请求的主流程
-     */
+    // 处理删除请求的主流程
     async processDeleteRequest(editor, linkInfo, currentNoteFile) {
+        // 防止重复触发
+        if (this.isProcessing) return;
         
         const { linkText, start, end } = linkInfo;
         const targetFile = this.app.metadataCache.getFirstLinkpathDest(linkText, currentNoteFile.path);
@@ -64,25 +66,50 @@ module.exports = class SmartDeletePlugin extends Plugin {
 
         const foldersToDelete = this.calculateCascadeFolders(targetFile);
 
+        // 开始执行删除
         const executeDelete = async (deleteFolders = true) => {
+            // 防止重复触发
+            if (this.isProcessing) return;
+            this.isProcessing = true;
+        
             try {
-                
+                // 1. 尝试将附件移至回收站
+                // 如果文件被占用，此处会直接抛出异常
                 await this.app.vault.trash(targetFile, true);
-                new Notice(`已删除附件: ${targetFile.name}`);
-
+        
+                // 2. 物理文件删除成功后，再执行编辑器文本替换
+                // 这样可以确保如果物理删除失败，文中链接依然保留，不会出现 RangeError
+                const currentContent = editor.getValue();
+                if (currentContent.length >= 0) {
+                    editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
+                }
+        
+                // 3. 处理级联文件夹删除
                 if (deleteFolders && foldersToDelete.length > 0) {
                     for (const folder of foldersToDelete) {
                         const f = this.app.vault.getAbstractFileByPath(folder.path);
                         if (f) await this.app.vault.trash(f, true);
                     }
                     new Notice(`已连带清除 ${foldersToDelete.length} 个空文件夹`);
+                } else {
+                    new Notice(`已删除附件: ${targetFile.name}`);
                 }
-
-                editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
-
+        
             } catch (err) {
+                // 4. 捕获并判定异常原因
                 console.error("Delete Error:", err);
-                new Notice("删除操作出错，请检查控制台");
+                
+                const errorMessage = err.message || "";
+                // 判定是否为 Windows 常见的 EBUSY (占用) 错误
+                if (errorMessage.includes("EBUSY") || errorMessage.toLowerCase().includes("busy")) {
+                    new Notice("❌ 文件正被其他程序占用，请关闭占用程序后再尝试");
+                } else {
+                    // 非占用导致的其它异常
+                    new Notice("❌ 删除操作失败，请查看控制台日志");
+                }
+            } finally {
+                // 5. 无论成功失败，最后必须解锁
+                this.isProcessing = false;
             }
         };
 
