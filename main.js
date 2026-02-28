@@ -3,9 +3,9 @@ const { Plugin, Notice, TFolder, Modal, PluginSettingTab, Setting } = require('o
 
 // 默认设置
 const DEFAULT_SETTINGS = {
-    enableCascade: true,         // 是否开启级联删除
+    enableCascade: true,         // 级联删除开关
     stopFolders: "assets",       // 停止删除的文件夹名称
-    enableWarning: true,         // 【默认开启】删除确认提醒
+    enableWarning: true,         // 删除确认提醒开关
     warningThreshold: 3,         // 提醒阈值
     trashStrategy: 'system'      // 回收站策略
 };
