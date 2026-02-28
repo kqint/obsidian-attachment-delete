@@ -62,4 +62,4 @@
 
 ## 📜 许可证
 
-[MIT License](https://www.google.com/search?q=LICENSE)
+[MIT License](https://github.com/kqint/obsidian-attachment-delete/blob/main/LICENSE)
