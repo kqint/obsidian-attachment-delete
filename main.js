@@ -70,11 +70,19 @@ module.exports = class SmartDeletePlugin extends Plugin {
             return;
         }
 
-        const references = this.getReferences(targetFile);
-        if (references.length > 1) {
+        const refData = this.getReferences(targetFile);
+
+        if (refData.totalCount > 1) {
+            // 移除编辑器中的链接文本
             editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
-            new Notice(`⚠️ 文件被多处引用 (${references.length}处)，仅移除当前链接。\n(保留文件: ${targetFile.name})`);
-            return;
+            
+            // 分情况提示用户
+            if (refData.fileCount === 1 && refData.files.includes(currentNoteFile.path)) {
+                new Notice(`⚠️ 本笔记内仍有其他位置引用此文件(${refData.totalCount} 处)，仅移除当前链接。`);
+            } else {
+                new Notice(`⚠️ 文件被多处引用 (${refData.totalCount} 处)，仅移除当前链接。`);
+            }
+            return; 
         }
 
         const foldersToDelete = this.calculateCascadeFolders(targetFile);
@@ -181,17 +189,27 @@ module.exports = class SmartDeletePlugin extends Plugin {
     }
 
     getReferences(targetFile) {
-        const refs = [];
         const targetPath = targetFile.path;
-        // 直接获取 Obsidian 维护好的全局链接索引
+        let totalRefCount = 0;
+        const refFiles = [];
+    
+        // 获取 Obsidian 全局链接索引
         const resolvedLinks = this.app.metadataCache.resolvedLinks;
+    
         for (const [sourcePath, links] of Object.entries(resolvedLinks)) {
-            // 如果该源文件指向了我们的目标文件
-            if (links[targetPath] !== undefined) {
-                refs.push(sourcePath);
+            // links[targetPath] 存储的就是该源文件引用目标文件的次数
+            const count = links[targetPath];
+            if (count !== undefined) {
+                totalRefCount += count;
+                refFiles.push(sourcePath);
             }
         }
-        return refs;
+    
+        return {
+            totalCount: totalRefCount,
+            fileCount: refFiles.length,
+            files: refFiles
+        };
     }
 
     getLinkUnderCursor(lineText, cursor) {
