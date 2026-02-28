@@ -12,7 +12,7 @@ const DEFAULT_SETTINGS = {
 
 module.exports = class SmartDeletePlugin extends Plugin {
     async onload() {
-        this.isProcessing = false; // 初始化状态锁：解锁
+        this.isProcessing = false; // 初始化状态锁
 
         await this.loadSettings();
         this.addSettingTab(new SmartDeleteSettingTab(this.app, this));
@@ -45,7 +45,7 @@ module.exports = class SmartDeletePlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
-    // 删除动作
+    // 删除附件文件函数
     async performDeletion(file) {
         if (this.settings.trashStrategy === 'permanent') {
             await this.app.vault.delete(file);
@@ -58,95 +58,100 @@ module.exports = class SmartDeletePlugin extends Plugin {
 
     // 处理删除请求的主流程
     async processDeleteRequest(editor, linkInfo, currentNoteFile) {
-        if (this.isProcessing) return; // 防止重复触发
-        
-        const { linkText, start, end } = linkInfo;
-        const targetFile = this.app.metadataCache.getFirstLinkpathDest(linkText, currentNoteFile.path);
-
-        if (!targetFile) {
-            new Notice(`❌ 未找到附件文件: ${linkText}`);
-            editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
-            return;
-        }
-
-        const refData = this.getReferences(targetFile);
-
-        if (refData.totalCount > 1) {
-            editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
-            if (refData.fileCount === 1 && refData.files.includes(currentNoteFile.path)) {
-                new Notice(`⚠️ 本笔记内仍有其他位置引用此文件(${refData.totalCount} 处)，仅移除当前链接。`);
-            } else {
-                new Notice(`⚠️ 文件被多处引用 (${refData.totalCount} 处)，仅移除当前链接。`);
-            }
+        // 防止两个删除动作同时进行
+        if (this.isProcessing) {
+            new Notice(`请等待上一次删除操作完成`);
             return; 
         }
+        this.isProcessing = true; // 加锁
 
-        const foldersToDelete = this.calculateCascadeFolders(targetFile);
+        try {
+            const { linkText, start, end } = linkInfo;
+            const targetFile = this.app.metadataCache.getFirstLinkpathDest(linkText, currentNoteFile.path);
 
-        // 开始删除附件
-        const executeDelete = async (deleteFolders = true) => {        
-            if (this.isProcessing) return; // 防止重复触发
-            this.isProcessing = true; // 加锁
-            try {
-                // 尝试将附件删除，如果文件被占用，此处会直接抛出异常
-                await this.performDeletion(targetFile);
-        
-                // 文件删除成功后，再执行编辑器文本替换
-                // 这样可以确保如果物理删除失败，文中链接依然保留，不会出现 RangeError
-                const currentContent = editor.getValue();
-                if (currentContent.length >= 0) {
-                    editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
+            if (!targetFile) {
+                new Notice(`❌ 未找到附件文件: ${linkText}`);
+                editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
+                new Notice(`已移除当前链接。`);
+                return;
+            }
+
+            const refData = this.getReferences(targetFile, editor, currentNoteFile);
+
+            if (refData.totalCount > 1) {
+                editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
+                if (refData.fileCount === 1 && refData.files.includes(currentNoteFile.path)) {
+                    new Notice(`⚠️ 本笔记内仍有其他位置引用此文件(${refData.totalCount} 处)，仅移除当前链接。`);
+                } else {
+                    new Notice(`⚠️ 文件被多处引用 (${refData.totalCount} 处)，仅移除当前链接。`);
                 }
-        
-                // 级联文件夹删除
-                if (deleteFolders && foldersToDelete.length > 0) {
-                    const folderNames = foldersToDelete.map(f => f.name).join("\n");
-                    for (const folder of foldersToDelete) {
-                        const f = this.app.vault.getAbstractFileByPath(folder.path);
-                        if (f) await this.performDeletion(f);
+                return; 
+            }
+
+            // 开始删除附件文件及文件夹
+            const foldersToDelete = this.calculateCascadeFolders(targetFile);
+            const executeDelete = async (deleteFolders = true) => {
+                try {
+                    // 尝试将附件删除，如果文件被占用，此处会直接抛出异常
+                    await this.performDeletion(targetFile);
+            
+                    // 文件删除成功后，再执行编辑器文本替换
+                    // 这样可以确保如果物理删除失败，文中链接依然保留，不会出现 RangeError
+                    const currentContent = editor.getValue();
+                    if (currentContent.length >= 0) {
+                        editor.replaceRange("", { line: start.line, ch: start.ch }, { line: end.line, ch: end.ch });
                     }
-                    new Notice(`已连带清除 ${foldersToDelete.length} 个空文件夹: \n${folderNames}`);
-                } else {
-                    new Notice(`已删除附件: ${targetFile.name}`);
-                }       
-            } catch (err) {
-                console.error("Delete Error:", err);               
-                const errorMessage = err.message || "";
-                if (errorMessage.includes("EBUSY") || errorMessage.toLowerCase().includes("busy")) {
-                    new Notice("❌ 文件正被其他程序占用，请关闭占用程序后再尝试");
-                } else {
-                    new Notice("❌ 删除操作失败，请查看控制台日志");
+            
+                    // 级联文件夹删除
+                    if (deleteFolders && foldersToDelete.length > 0) {
+                        const folderNames = foldersToDelete.map(f => f.name).join("\n");
+                        for (const folder of foldersToDelete) {
+                            const f = this.app.vault.getAbstractFileByPath(folder.path);
+                            if (f) await this.performDeletion(f);
+                        }
+                        new Notice(`已连带清除 ${foldersToDelete.length} 个空文件夹: \n${folderNames}`);
+                    } else {
+                        new Notice(`已删除附件: ${targetFile.name}`);
+                    }       
+                } catch (err) {
+                    console.error("Delete Error:", err);               
+                    const errorMessage = err.message || "";
+                    if (errorMessage.includes("EBUSY") || errorMessage.toLowerCase().includes("busy")) {
+                        new Notice("❌ 文件正被其他程序占用，请关闭占用程序后再尝试");
+                    } else {
+                        new Notice("❌ 删除操作失败，请查看控制台日志");
+                    }
                 }
-            } finally {
-                // 无论成功失败，最后必须解锁
-                this.isProcessing = false;
-            }
-        };
+            };
 
-        // 决策逻辑
-        if (!this.settings.enableCascade || foldersToDelete.length === 0) {
-            await executeDelete(false);
-            return;
-        }
-
-        if (!this.settings.enableWarning) {
-            await executeDelete(true);
-            return;
-        }
-
-        if (foldersToDelete.length < this.settings.warningThreshold) {
-            await executeDelete(true);
-            return;
-        } 
-        
-        // 级联删除弹窗确认
-        new DeleteConfirmModal(this.app, foldersToDelete, async (choice) => {
-            if (choice === 'all') {
-                await executeDelete(true);
-            } else if (choice === 'file_only') {
+            // 决策逻辑
+            if (!this.settings.enableCascade || foldersToDelete.length === 0) {
                 await executeDelete(false);
+                return;
             }
-        }).open();
+
+            if (!this.settings.enableWarning) {
+                await executeDelete(true);
+                return;
+            }
+
+            if (foldersToDelete.length < this.settings.warningThreshold) {
+                await executeDelete(true);
+                return;
+            } 
+            
+            // 级联删除弹窗确认
+            new DeleteConfirmModal(this.app, foldersToDelete, async (choice) => {
+                if (choice === 'all') {
+                    await executeDelete(true);
+                } else if (choice === 'file_only') {
+                    await executeDelete(false);
+                }
+            }).open();
+        } finally {
+            // 解锁：无论正常返回还是异常，都确保锁被释放
+            this.isProcessing = false;
+        }
     }
 
     calculateCascadeFolders(targetFile) {
@@ -176,27 +181,64 @@ module.exports = class SmartDeletePlugin extends Plugin {
         return foldersToDelete;
     }
 
-    getReferences(targetFile) {
+    // 手动扫描当前编辑器内的引用数
+    countLinksInEditor(editor, targetFile, sourcePath) {
+        const text = editor.getValue();
+        const wikiRegex = /!?\[\[(.*?)(?:\|.*?)?\]\]/g;
+        const mdRegex = /!?\[.*?\]\((.*?)\)/g;
+        let count = 0;
+        let match;
+
+        const checkMatch = (linkText, type) => {
+            const resolved = this.app.metadataCache.getFirstLinkpathDest(linkText, sourcePath);
+            const resolvedPath = resolved ? resolved.path : "null";
+            const isMatch = resolved && resolved.path === targetFile.path;
+            
+            if (isMatch) count++;
+        };
+
+        while ((match = wikiRegex.exec(text)) !== null) checkMatch(match[1], "WikiLink");
+        while ((match = mdRegex.exec(text)) !== null) checkMatch(decodeURIComponent(match[1]), "Markdown");
+        
+        return count;
+    }
+
+    // 引用检测：混合模式
+    getReferences(targetFile, currentEditor, currentFile) {
         const targetPath = targetFile.path;
         let totalRefCount = 0;
-        const refFiles = [];
-    
-        // 获取 Obsidian 全局链接索引
+        const refFiles = new Set();
         const resolvedLinks = this.app.metadataCache.resolvedLinks;
     
+        // 获取所有打开的 Markdown 编辑器实例
+        const openLeaves = this.app.workspace.getLeavesOfType("markdown");
+        const editorMap = new Map();
+        openLeaves.forEach(leaf => {
+            if (leaf.view.file && leaf.view.editor) {
+                editorMap.set(leaf.view.file.path, leaf.view.editor);
+            }
+        });
+    
+        // 遍历全局索引
         for (const [sourcePath, links] of Object.entries(resolvedLinks)) {
-            // links[targetPath] 存储的就是该源文件引用目标文件的次数
-            const count = links[targetPath];
-            if (count !== undefined) {
+            let count = 0;           
+            // 如果该文件正在某个标签页中打开，直接扫描那个标签页的内容（实时）
+            if (editorMap.has(sourcePath)) {
+                count = this.countLinksInEditor(editorMap.get(sourcePath), targetFile, sourcePath);
+            } else {
+                // 如果文件没打开，才信任缓存
+                count = links[targetPath] || 0;
+            }    
+            if (count > 0) {
                 totalRefCount += count;
-                refFiles.push(sourcePath);
+                refFiles.add(sourcePath);
             }
         }
     
         return {
             totalCount: totalRefCount,
-            fileCount: refFiles.length,
-            files: refFiles
+            fileCount: refFiles.size,
+            files: Array.from(refFiles)
         };
     }
 
