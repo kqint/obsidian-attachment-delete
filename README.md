@@ -39,7 +39,7 @@
 
 ## 🛠️ 安装方法
 
-1. 从 Release 页面下载 `main.js`, `manifest.json`, `styles.css`。
+1. 从 [Release](https://github.com/kqint/obsidian-attachment-delete/releases) 页面下载 `main.js`, `manifest.json`, `styles.css`。
 2. 进入你的 Obsidian 库文件夹：`.obsidian/plugins/`。
 3. 创建文件夹 `attachment-delete`。
 4. 将下载的文件放入该文件夹。
