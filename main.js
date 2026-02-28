@@ -6,7 +6,8 @@ const DEFAULT_SETTINGS = {
     enableCascade: true,         // 是否开启级联删除
     stopFolders: "assets",       // 停止删除的文件夹名称
     enableWarning: true,         // 【默认开启】删除确认提醒
-    warningThreshold: 3          // 提醒阈值
+    warningThreshold: 3,         // 提醒阈值
+    trashStrategy: 'system'      // 回收站策略
 };
 
 module.exports = class SmartDeletePlugin extends Plugin {
@@ -24,7 +25,7 @@ module.exports = class SmartDeletePlugin extends Plugin {
                 if (linkInfo) {
                     menu.addItem((item) => {
                         item
-                            .setTitle("删除附件 ")
+                            .setTitle("删除附件")
                             .setIcon("trash")
                             .setWarning(true)
                             .onClick(async () => {
@@ -42,6 +43,17 @@ module.exports = class SmartDeletePlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    // 封装统一的删除动作
+    async performDeletion(file) {
+        if (this.settings.trashStrategy === 'permanent') {
+            await this.app.vault.delete(file);
+        } else {
+            // true 为系统回收站，false 为库内 .trash 文件夹
+            const useSystemTrash = this.settings.trashStrategy === 'system';
+            await this.app.vault.trash(file, useSystemTrash);
+        }
     }
 
     // 处理删除请求的主流程
@@ -74,9 +86,9 @@ module.exports = class SmartDeletePlugin extends Plugin {
             this.isProcessing = true;
         
             try {
-                // 1. 尝试将附件移至回收站
+                // 1. 尝试将附件删除
                 // 如果文件被占用，此处会直接抛出异常
-                await this.app.vault.trash(targetFile, true);
+                await this.performDeletion(targetFile);
         
                 // 2. 物理文件删除成功后，再执行编辑器文本替换
                 // 这样可以确保如果物理删除失败，文中链接依然保留，不会出现 RangeError
@@ -89,7 +101,7 @@ module.exports = class SmartDeletePlugin extends Plugin {
                 if (deleteFolders && foldersToDelete.length > 0) {
                     for (const folder of foldersToDelete) {
                         const f = this.app.vault.getAbstractFileByPath(folder.path);
-                        if (f) await this.app.vault.trash(f, true);
+                        if (f) await this.performDeletion(f);
                     }
                     new Notice(`已连带清除 ${foldersToDelete.length} 个空文件夹`);
                 } else {
@@ -217,6 +229,19 @@ class SmartDeleteSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
         containerEl.createEl('h2', { text: '附件删除设置' });
+
+        new Setting(containerEl)
+            .setName('回收站策略')
+            .setDesc('选择删除附件后的处理方式')
+            .addDropdown(dropdown => dropdown
+                .addOption('system', '移至系统回收站')
+                .addOption('local', '移至库内回收站 (.trash 文件夹)')
+                .addOption('permanent', '永久删除 (不可恢复)')
+                .setValue(this.plugin.settings.trashStrategy)
+                .onChange(async (value) => {
+                    this.plugin.settings.trashStrategy = value;
+                    await this.plugin.saveSettings();
+                }));
 
         new Setting(containerEl).setName('启用级联删除').setDesc('删除附件后，如果文件夹变为空，则自动删除文件夹。')
             .addToggle(toggle => toggle.setValue(this.plugin.settings.enableCascade).onChange(async (value) => {
