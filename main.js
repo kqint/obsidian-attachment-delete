@@ -182,22 +182,13 @@ module.exports = class SmartDeletePlugin extends Plugin {
 
     getReferences(targetFile) {
         const refs = [];
-        const markdownFiles = this.app.vault.getMarkdownFiles();
         const targetPath = targetFile.path;
-        for (const mdFile of markdownFiles) {
-            const cache = this.app.metadataCache.getFileCache(mdFile);
-            if (!cache) continue;
-            if (cache.embeds) {
-                for (const embed of cache.embeds) {
-                    const resolved = this.app.metadataCache.getFirstLinkpathDest(embed.link, mdFile.path);
-                    if (resolved && resolved.path === targetPath) refs.push(mdFile);
-                }
-            }
-            if (cache.links) {
-                for (const link of cache.links) {
-                    const resolved = this.app.metadataCache.getFirstLinkpathDest(link.link, mdFile.path);
-                    if (resolved && resolved.path === targetPath) refs.push(mdFile);
-                }
+        // 直接获取 Obsidian 维护好的全局链接索引
+        const resolvedLinks = this.app.metadataCache.resolvedLinks;
+        for (const [sourcePath, links] of Object.entries(resolvedLinks)) {
+            // 如果该源文件指向了我们的目标文件
+            if (links[targetPath] !== undefined) {
+                refs.push(sourcePath);
             }
         }
         return refs;
