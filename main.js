@@ -99,11 +99,12 @@ module.exports = class SmartDeletePlugin extends Plugin {
         
                 // 3. 处理级联文件夹删除
                 if (deleteFolders && foldersToDelete.length > 0) {
+                    const folderNames = foldersToDelete.map(f => f.name).join("\n");
                     for (const folder of foldersToDelete) {
                         const f = this.app.vault.getAbstractFileByPath(folder.path);
                         if (f) await this.performDeletion(f);
                     }
-                    new Notice(`已连带清除 ${foldersToDelete.length} 个空文件夹`);
+                    new Notice(`已连带清除 ${foldersToDelete.length} 个空文件夹: \n${folderNames}`);
                 } else {
                     new Notice(`已删除附件: ${targetFile.name}`);
                 }
