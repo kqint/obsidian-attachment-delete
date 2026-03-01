@@ -154,6 +154,7 @@ module.exports = class SmartDeletePlugin extends Plugin {
         }
     }
 
+    // 级联删除文件夹
     calculateCascadeFolders(targetFile) {
         if (!this.settings.enableCascade) return [];
         const stopFolderNames = this.settings.stopFolders.split(',').map(s => s.trim()).filter(s => s.length > 0);
@@ -181,7 +182,7 @@ module.exports = class SmartDeletePlugin extends Plugin {
         return foldersToDelete;
     }
 
-    // 手动扫描当前编辑器内的引用数
+    // 统计当前编辑器内的引用数
     countLinksInEditor(editor, targetFile, sourcePath) {
         const text = editor.getValue();
         const wikiRegex = /!?\[\[(.*?)(?:\|.*?)?\]\]/g;
